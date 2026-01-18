@@ -1,0 +1,69 @@
+name: Gitleaks Secret Scanning (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      scan_type:
+        description: 'Type of scan: pr or full'
+        required: true
+        type: string
+      config_path:
+        description: 'Path to custom gitleaks config (optional)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GITHUB_TOKEN:
+        required: false
+
+jobs:
+  gitleaks-scan:
+    name: Gitleaks Secret Scanner
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for complete scanning
+
+      - name: Run Gitleaks (PR Mode - Check Changes Only)
+        if: inputs.scan_type == 'pr'
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_CONFIG: ${{ inputs.config_path }}
+        with:
+          args: --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+      - name: Run Gitleaks (Full Scan - All Repository)
+        if: inputs.scan_type == 'full'
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_CONFIG: ${{ inputs.config_path }}
+
+      - name: Upload Gitleaks Report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report-${{ github.run_id }}
+          path: |
+            gitleaks-report.json
+            gitleaks-report.sarif
+          retention-days: 30
+
+      - name: Comment on PR (if secrets found)
+        if: failure() && inputs.scan_type == 'pr' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Gitleaks detected potential secrets in this PR!**\n\nPlease review the workflow logs and remove any exposed sensitive information.\n\n**Action Required:**\n1. Check the failed workflow for details\n2. Remove any secrets from your code\n3. Use environment variables or secret managers instead\n4. Consider rotating any exposed credentials'
+            })
