@@ -12,6 +12,14 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      GH_PAT:
+        description: 'Personal Access Token for enhanced permissions (optional, falls back to github.token)'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks license key for enterprise features (optional)'
+        required: false
+
 jobs:
   gitleaks-scan:
     name: Gitleaks Secret Scanner
@@ -27,7 +35,7 @@ jobs:
         if: inputs.scan_type == 'pr'
         uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_CONFIG: ${{ inputs.config_path }}
         with:
@@ -37,7 +45,7 @@ jobs:
         if: inputs.scan_type == 'full'
         uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_CONFIG: ${{ inputs.config_path }}
 
@@ -55,7 +63,7 @@ jobs:
         if: failure() && inputs.scan_type == 'pr' && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.GH_PAT || github.token }}
           script: |
             github.rest.issues.createComment({
               issue_number: context.issue.number,
